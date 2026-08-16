@@ -1,0 +1,109 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Phone-omenal — BLE setup</title>
+<!--
+  Web Bluetooth config page for 06_ble_config.c. Runs entirely in the browser
+  and talks GATT directly to the box — no server involved. Web Bluetooth needs
+  a secure context, so open this file straight from disk (file:// counts) in
+  Chrome or Edge on desktop/Android. iOS Safari has no Web Bluetooth: iPhone
+  users take the captive portal / LAN page instead (spec §1).
+-->
+<style>
+body{font:16px system-ui;max-width:26em;margin:2em auto;padding:0 1em}
+input{width:100%;padding:.5em;margin:.2em 0 .8em;box-sizing:border-box}
+button{padding:.6em 1.2em;margin-right:.5em}
+#st{background:#eee;padding:.8em;border-radius:.5em;min-height:1.2em}
+.hide{display:none}small{color:#666}
+</style></head><body>
+<h1>&#128222; Phone-omenal <small>BLE setup</small></h1>
+<div id="st">not connected</div>
+
+<div id="connect-ui">
+  <p><input id="pin" placeholder="device PIN (sticker inside the lid)" inputmode="numeric">
+  <button id="btn-connect">Connect to box</button></p>
+</div>
+
+<form id="f" class="hide">
+  <h3>WiFi</h3>
+  <input name="ssid" placeholder="network name">
+  <input name="wifipass" type="password" placeholder="password (unchanged if blank)">
+  <h3>Switchboard</h3>
+  <input name="server" placeholder="server address">
+  <input name="sipuser" placeholder="phone number">
+  <input name="sippass" type="password" placeholder="SIP password (unchanged if blank)">
+  <p><button>Save &amp; apply</button></p>
+</form>
+
+<script>
+// Must match 06_ble_config.c. NimBLE's BLE_UUID128_INIT is little-endian, so
+// the string form is those bytes reversed — the characteristic index lands in
+// the leading byte.
+const uuid = n => n.toString(16).padStart(2, "0") + "006e6f-6870-559c-214b-3a6d7a0e9ef0";
+const SVC = uuid(0x00);
+const CHR = { unlock: 0x01, ssid: 0x02, wifipass: 0x03, server: 0x04,
+              sipuser: 0x05, sippass: 0x06, status: 0x07, apply: 0x08 };
+
+const $ = s => document.querySelector(s);
+const enc = new TextEncoder(), dec = new TextDecoder();
+let chars = {};
+
+const say = t => $("#st").textContent = t;
+
+if (!navigator.bluetooth)
+  say("this browser has no Web Bluetooth — use Chrome or Edge " +
+      "(iPhone: connect to the box's setup WiFi instead)");
+
+$("#btn-connect").onclick = async () => {
+  const pin = $("#pin").value.trim();
+  if (!pin) return say("enter the device PIN first");
+  try {
+    say("choose your box in the picker…");
+    const dev = await navigator.bluetooth.requestDevice({
+      filters: [{ namePrefix: "Phone-omenal" }], optionalServices: [SVC] });
+    dev.addEventListener("gattserverdisconnected", () => {
+      say("disconnected"); $("#f").classList.add("hide");
+      $("#connect-ui").classList.remove("hide");
+    });
+    say("connecting…");
+    const svc = await (await dev.gatt.connect()).getPrimaryService(SVC);
+    for (const [name, n] of Object.entries(CHR))
+      chars[name] = await svc.getCharacteristic(uuid(n));
+
+    await chars.unlock.writeValue(enc.encode(pin));   // throws if PIN is wrong
+    $("#connect-ui").classList.add("hide");
+    $("#f").classList.remove("hide");
+    for (const name of ["ssid", "server", "sipuser"])  // secrets are write-only
+      $(`[name=${name}]`).value = dec.decode(await chars[name].readValue());
+    await refresh();
+  } catch (e) {
+    say(e.name === "NotFoundError" ? "no box picked"
+        : "PIN rejected or connection failed — check the PIN and retry");
+    chars = {};
+  }
+};
+
+async function refresh() {
+  // status format: "up|<ssid>|<admin email>" or "down|<ssid>|<last failure>"
+  const [state, ssid, detail] = dec.decode(await chars.status.readValue()).split("|");
+  say(state === "up" ? `WiFi "${ssid}" ✓ connected — admin contact: ${detail || "—"}`
+                     : `WiFi ${ssid ? `"${ssid}" ✗ ${detail}` : "not configured"}`);
+}
+
+$("#f").onsubmit = async e => {
+  e.preventDefault();
+  try {
+    for (const [name, el] of Object.entries(
+         Object.fromEntries(new FormData(e.target))) )
+      if (el) await chars[name].writeValue(enc.encode(el));
+    await chars.apply.writeValue(enc.encode("go"));
+    say("saved — box is joining WiFi, status updates below…");
+    // poll a few times while it retries the network
+    for (let i = 0; i < 10; i++) {
+      await new Promise(r => setTimeout(r, 3000));
+      await refresh();
+    }
+  } catch (err) {
+    say("write refused — box may be in a call; try again in a minute");
+  }
+};
+</script></body></html>

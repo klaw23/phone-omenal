@@ -14,6 +14,7 @@ rather than cloning something monolithic you didn't write yet.
 | `examples/04_digits.c` | Rotary pulse counting + MT8870 DTMF |
 | `examples/05_provision.c` | WiFi with captive-portal fallback + LAN config page (spec §1) |
 | `examples/06_ble_config.c` | Always-on BLE config GATT service (companion to 05) |
+| `ble-config.html` | Web Bluetooth page that talks to 06 — open from disk in Chrome/Edge |
 
 Milestone 5 (the actual SIP call) builds on
 [ESP32-SIP-Voice](https://github.com/GeorgeBregman/ESP32-SIP-Voice) (MIT) —

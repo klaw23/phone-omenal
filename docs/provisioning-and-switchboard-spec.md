@@ -19,6 +19,12 @@ Three ways in, one rule each:
 | **LAN config page** (`http://phone-omenal.local`) | Box is on WiFi | Everyday reconfiguration; the switchboard portal deep-links here per device |
 | **BLE web config** (Web Bluetooth GATT) | Always advertising | Universal escape hatch — works even when WiFi is wedged. Chrome/Edge/Android only (no iOS Web Bluetooth); the portal covers everyone else |
 
+The BLE page (`firmware/ble-config.html`) is pure client-side — the browser
+talks GATT directly to the box, so no server hosts it. Web Bluetooth requires
+a secure context (`https://`, `localhost`, or `file://`), which is why it is
+NOT served by the plain-HTTP switchboard: open it from disk, or host it on
+any HTTPS static host.
+
 State machine:
 
 ```
