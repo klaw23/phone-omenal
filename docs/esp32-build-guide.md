@@ -134,6 +134,10 @@ reservation so the phones' registration target never moves.
 
 Either path starts Asterisk with three extensions defined: `101`, `102`, `103`
 (phones) and `600` (an echo test — it answers and plays your own voice back).
+Docker also starts the **switchboard web app** on `:8080` — accounts, number
+assignment, and per-device call logs (see
+`provisioning-and-switchboard-spec.md`). It's optional at this milestone; the
+starter extensions work without it.
 
 Now install **Linphone** (free softphone) on your laptop and phone. Register two
 accounts against your server: username `101` password `changeme-101` and `102`/

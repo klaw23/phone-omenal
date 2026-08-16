@@ -1,0 +1,532 @@
+#!/usr/bin/env python3
+"""Phone-omenal switchboard manager.
+
+Admin creates users and assigns numbers; users add devices, request numbers,
+and read their call logs. The app owns asterisk/pjsip_devices.conf (rendered
+from the DB) and reloads Asterisk over AMI. Spec:
+docs/provisioning-and-switchboard-spec.md §3–5.
+
+Deliberately boring stack — Flask + SQLite + raw-socket AMI — so it runs on
+a Raspberry Pi 2 next to Asterisk. `python3 app.py` and go.
+"""
+import csv
+import hashlib
+import hmac
+import os
+import re
+import secrets
+import socket
+import sqlite3
+import time
+
+from flask import (Flask, abort, g, jsonify, redirect, render_template_string,
+                   request, session, url_for)
+from werkzeug.security import check_password_hash, generate_password_hash
+
+# --- configuration (env-overridable; defaults fit the repo's docker-compose) --
+DB_PATH = os.environ.get("SWITCHBOARD_DB", "switchboard.db")
+CONF_DIR = os.environ.get("ASTERISK_CONF_DIR", "../asterisk")
+CDR_CSV = os.environ.get("CDR_CSV", "/var/log/asterisk/cdr-csv/Master.csv")
+AMI_HOST = os.environ.get("AMI_HOST", "127.0.0.1")
+AMI_PORT = int(os.environ.get("AMI_PORT", "5038"))
+AMI_USER = os.environ.get("AMI_USER", "switchboard")
+AMI_PASS = os.environ.get("AMI_PASS", "changeme-ami")
+SECRET = os.environ.get("SWITCHBOARD_SECRET", "")
+
+app = Flask(__name__)
+app.secret_key = SECRET or secrets.token_hex(32)  # unset => sessions reset on restart
+
+# --------------------------------------------------------------------- schema
+
+SCHEMA = """
+CREATE TABLE IF NOT EXISTS users (
+    id INTEGER PRIMARY KEY, username TEXT UNIQUE NOT NULL,
+    password_hash TEXT NOT NULL, email TEXT NOT NULL DEFAULT '',
+    is_admin INTEGER NOT NULL DEFAULT 0, disabled INTEGER NOT NULL DEFAULT 0);
+CREATE TABLE IF NOT EXISTS devices (
+    id INTEGER PRIMARY KEY, user_id INTEGER NOT NULL REFERENCES users(id),
+    name TEXT NOT NULL, number TEXT UNIQUE,
+    sip_password TEXT NOT NULL, created INTEGER NOT NULL);
+CREATE TABLE IF NOT EXISTS number_requests (
+    id INTEGER PRIMARY KEY, device_id INTEGER NOT NULL REFERENCES devices(id),
+    requested TEXT,               -- NULL = "next available"
+    status TEXT NOT NULL DEFAULT 'pending',   -- pending/approved/rejected
+    created INTEGER NOT NULL);
+"""
+
+
+def db():
+    if "db" not in g:
+        g.db = sqlite3.connect(DB_PATH)
+        g.db.row_factory = sqlite3.Row
+        g.db.execute("PRAGMA foreign_keys=ON")
+    return g.db
+
+
+@app.teardown_appcontext
+def _close(exc):
+    if "db" in g:
+        g.db.close()
+
+
+def bootstrap():
+    conn = sqlite3.connect(DB_PATH)
+    conn.executescript(SCHEMA)
+    if not conn.execute("SELECT 1 FROM users WHERE is_admin=1").fetchone():
+        user = os.environ.get("ADMIN_USERNAME", "admin")
+        pw = os.environ.get("ADMIN_PASSWORD", "changeme-admin")
+        email = os.environ.get("ADMIN_EMAIL", "admin@example.com")
+        conn.execute(
+            "INSERT INTO users (username,password_hash,email,is_admin) VALUES (?,?,?,1)",
+            (user, generate_password_hash(pw), email))
+        conn.commit()
+        print(f"bootstrap: created admin '{user}' (email {email}) — "
+              f"CHANGE THE PASSWORD if you kept the default")
+    conn.close()
+
+
+# --------------------------------------------------------------- number rules
+# Spec §2: 3–6 digits, never starts with 0 (0… is the future inter-switchboard
+# prefix), 6XX is the service range (600 echo, 601 playback, …).
+
+def number_error(num):
+    if not re.fullmatch(r"[0-9]{3,6}", num):
+        return "numbers are 3–6 digits"
+    if num[0] == "0":
+        return "numbers can't start with 0 (reserved for dialing other switchboards)"
+    if re.fullmatch(r"6[0-9][0-9]", num):
+        return "6XX is the service range (echo test etc.)"
+    if db().execute("SELECT 1 FROM devices WHERE number=?", (num,)).fetchone():
+        return "number already assigned"
+    return None
+
+
+def next_free_number():
+    taken = {r["number"] for r in
+             db().execute("SELECT number FROM devices WHERE number IS NOT NULL")}
+    for n in range(100, 1000):
+        num = str(n)
+        if num not in taken and not number_error(num):
+            return num
+    return None
+
+
+# ----------------------------------------------------- Asterisk config + AMI
+
+PJSIP_ENTRY = """
+[{num}](endpoint-t)
+auth={num}
+aors={num}
+callerid="{name}" <{num}>
+[{num}](auth-t)
+username={num}
+password={password}
+[{num}](aor-t)
+"""
+
+
+def render_pjsip():
+    """Rewrite pjsip_devices.conf from the DB and reload Asterisk.
+
+    Written in place (truncate + write, no atomic rename): docker bind-mounts
+    single files by inode, so a rename would silently detach the mount.
+    """
+    rows = db().execute(
+        "SELECT d.number, d.sip_password, u.username FROM devices d "
+        "JOIN users u ON u.id=d.user_id "
+        "WHERE d.number IS NOT NULL AND u.disabled=0 ORDER BY d.number").fetchall()
+    path = os.path.join(CONF_DIR, "pjsip_devices.conf")
+    with open(path, "w") as f:
+        f.write("; generated by switchboard/app.py — do not edit; edits are "
+                "overwritten on every change\n")
+        for r in rows:
+            name = re.sub(r'[\\"<>]', "", r["username"])[:32]
+            f.write(PJSIP_ENTRY.format(num=r["number"], name=name,
+                                       password=r["sip_password"]))
+    ami_command("pjsip reload")
+
+
+def ami_command(cmd):
+    """Run one CLI command over AMI. Returns raw response text ('' on failure —
+    config on disk is still correct; Asterisk catches up on next reload)."""
+    try:
+        s = socket.create_connection((AMI_HOST, AMI_PORT), timeout=4)
+        f = s.makefile("rw", newline="\r\n")
+        f.readline()                                   # banner
+        f.write(f"Action: Login\r\nUsername: {AMI_USER}\r\nSecret: {AMI_PASS}\r\n\r\n")
+        f.write(f"Action: Command\r\nCommand: {cmd}\r\n\r\n")
+        f.write("Action: Logoff\r\n\r\n")
+        f.flush()
+        s.settimeout(4)
+        out = []
+        try:
+            while True:
+                line = f.readline()
+                if not line:
+                    break
+                out.append(line)
+        except socket.timeout:
+            pass
+        s.close()
+        return "".join(out)
+    except OSError as e:
+        app.logger.warning("AMI unreachable (%s) — config written, reload skipped", e)
+        return ""
+
+
+def registered_numbers():
+    """Numbers with a live SIP registration, from `pjsip show contacts`."""
+    return set(re.findall(r"Contact:\s+(\d+)/sip:", ami_command("pjsip show contacts")))
+
+
+def call_log(number, limit=50):
+    """CDR rows where this number is caller or callee, newest first."""
+    rows = []
+    try:
+        with open(CDR_CSV, newline="") as f:
+            for r in csv.reader(f):
+                if len(r) >= 15 and (r[1] == number or r[2] == number):
+                    rows.append({"src": r[1], "dst": r[2], "start": r[9],
+                                 "seconds": r[13], "result": r[14]})
+    except OSError:
+        pass
+    return rows[::-1][:limit]
+
+
+# ------------------------------------------------------------------ web auth
+
+def current_user():
+    uid = session.get("uid")
+    if not uid:
+        return None
+    return db().execute("SELECT * FROM users WHERE id=? AND disabled=0",
+                        (uid,)).fetchone()
+
+
+def require_user():
+    u = current_user()
+    if not u:
+        abort(redirect(url_for("login")))
+    return u
+
+
+def require_admin():
+    u = require_user()
+    if not u["is_admin"]:
+        abort(403)
+    return u
+
+
+def admin_email():
+    r = db().execute(
+        "SELECT email FROM users WHERE is_admin=1 AND disabled=0 ORDER BY id").fetchone()
+    return r["email"] if r else ""
+
+
+# --------------------------------------------------------- device API (boxes)
+# The box logs in with its SIP creds (number + password) and polls /api/me to
+# show connection status + the admin's email on its config surfaces. Spec §5.
+
+def api_token(number):
+    exp = int(time.time()) + 86400
+    mac = hmac.new(app.secret_key.encode(), f"{number}.{exp}".encode(),
+                   hashlib.sha256).hexdigest()
+    return f"{number}.{exp}.{mac}"
+
+
+def check_token(tok):
+    try:
+        number, exp, mac = tok.split(".")
+        good = hmac.new(app.secret_key.encode(), f"{number}.{exp}".encode(),
+                        hashlib.sha256).hexdigest()
+        if hmac.compare_digest(mac, good) and int(exp) > time.time():
+            return number
+    except ValueError:
+        pass
+    return None
+
+
+def device_payload(number):
+    d = db().execute(
+        "SELECT d.*, u.username AS owner FROM devices d JOIN users u ON u.id=d.user_id "
+        "WHERE d.number=?", (number,)).fetchone()
+    return {"number": number, "device": d["name"], "owner": d["owner"],
+            "admin_email": admin_email()}
+
+
+@app.post("/api/login")
+def api_login():
+    j = request.get_json(silent=True) or {}
+    number, pw = str(j.get("username", "")), str(j.get("password", ""))
+    d = db().execute(
+        "SELECT d.* FROM devices d JOIN users u ON u.id=d.user_id "
+        "WHERE d.number=? AND u.disabled=0", (number,)).fetchone()
+    if not d or not hmac.compare_digest(d["sip_password"], pw):
+        return jsonify(error="bad credentials"), 401
+    return jsonify(token=api_token(number), **device_payload(number))
+
+
+@app.get("/api/me")
+def api_me():
+    auth = request.headers.get("Authorization", "")
+    number = check_token(auth.removeprefix("Bearer ").strip())
+    if not number:
+        return jsonify(error="bad token"), 401
+    return jsonify(**device_payload(number))
+
+
+# ------------------------------------------------------------------ web: auth
+
+@app.route("/login", methods=["GET", "POST"])
+def login():
+    error = None
+    if request.method == "POST":
+        u = db().execute("SELECT * FROM users WHERE username=? AND disabled=0",
+                         (request.form.get("username", ""),)).fetchone()
+        if u and check_password_hash(u["password_hash"], request.form.get("password", "")):
+            session["uid"] = u["id"]
+            return redirect(url_for("admin" if u["is_admin"] else "home"))
+        error = "wrong username or password"
+    return page("login", error=error)
+
+
+@app.get("/logout")
+def logout():
+    session.clear()
+    return redirect(url_for("login"))
+
+
+# ------------------------------------------------------------------ web: user
+
+@app.get("/")
+def home():
+    u = require_user()
+    if u["is_admin"]:
+        return redirect(url_for("admin"))
+    devices = db().execute(
+        "SELECT d.*, (SELECT status FROM number_requests r WHERE r.device_id=d.id "
+        " ORDER BY r.id DESC LIMIT 1) AS req_status "
+        "FROM devices d WHERE d.user_id=? ORDER BY d.id", (u["id"],)).fetchall()
+    return page("home", user=u, devices=devices, online=registered_numbers(),
+                admin_email=admin_email())
+
+
+@app.post("/devices")
+def add_device():
+    u = require_user()
+    name = request.form.get("name", "").strip() or "phone"
+    pw = secrets.token_urlsafe(12)
+    db().execute("INSERT INTO devices (user_id,name,sip_password,created) "
+                 "VALUES (?,?,?,?)", (u["id"], name[:40], pw, int(time.time())))
+    db().commit()
+    return redirect(url_for("home"))
+
+
+@app.post("/devices/<int:did>/request-number")
+def request_number(did):
+    u = require_user()
+    d = db().execute("SELECT * FROM devices WHERE id=? AND user_id=?",
+                     (did, u["id"])).fetchone() or abort(404)
+    want = request.form.get("number", "").strip() or None
+    if want and (err := number_error(want)):
+        return page("error", message=err), 400
+    db().execute("INSERT INTO number_requests (device_id,requested,created) "
+                 "VALUES (?,?,?)", (d["id"], want, int(time.time())))
+    db().commit()
+    return redirect(url_for("home"))
+
+
+@app.get("/devices/<int:did>")
+def device_detail(did):
+    u = require_user()
+    d = db().execute(
+        "SELECT * FROM devices WHERE id=? AND (user_id=? OR ?)",
+        (did, u["id"], u["is_admin"])).fetchone() or abort(404)
+    return page("device", user=u, d=d,
+                online=d["number"] in registered_numbers() if d["number"] else False,
+                log=call_log(d["number"]) if d["number"] else [])
+
+
+# ----------------------------------------------------------------- web: admin
+
+@app.get("/admin")
+def admin():
+    u = require_admin()
+    users = db().execute("SELECT * FROM users ORDER BY id").fetchall()
+    devices = db().execute(
+        "SELECT d.*, u.username AS owner FROM devices d JOIN users u ON u.id=d.user_id "
+        "ORDER BY d.id").fetchall()
+    requests_ = db().execute(
+        "SELECT r.*, d.name AS device_name, u.username AS owner FROM number_requests r "
+        "JOIN devices d ON d.id=r.device_id JOIN users u ON u.id=d.user_id "
+        "WHERE r.status='pending' ORDER BY r.id").fetchall()
+    return page("admin", user=u, users=users, devices=devices,
+                requests=requests_, online=registered_numbers())
+
+
+@app.post("/admin/users")
+def create_user():
+    require_admin()
+    name = request.form.get("username", "").strip()
+    if not re.fullmatch(r"[a-zA-Z0-9_.-]{2,32}", name):
+        return page("error", message="username: 2–32 chars, letters/digits/._-"), 400
+    pw = request.form.get("password", "") or secrets.token_urlsafe(9)
+    try:
+        db().execute(
+            "INSERT INTO users (username,password_hash,email) VALUES (?,?,?)",
+            (name, generate_password_hash(pw),
+             request.form.get("email", "").strip()))
+        db().commit()
+    except sqlite3.IntegrityError:
+        return page("error", message="username taken"), 400
+    return page("user_created", username=name, password=pw)
+
+
+@app.post("/admin/assign")
+def assign_number():
+    require_admin()
+    did = request.form.get("device_id", "")
+    num = request.form.get("number", "").strip()
+    d = db().execute("SELECT * FROM devices WHERE id=?", (did,)).fetchone() or abort(404)
+    if err := number_error(num):
+        return page("error", message=err), 400
+    db().execute("UPDATE devices SET number=? WHERE id=?", (num, d["id"]))
+    db().commit()
+    render_pjsip()
+    return redirect(url_for("admin"))
+
+
+@app.post("/admin/release/<int:did>")
+def release_number(did):
+    require_admin()
+    db().execute("UPDATE devices SET number=NULL WHERE id=?", (did,))
+    db().commit()
+    render_pjsip()
+    return redirect(url_for("admin"))
+
+
+@app.post("/admin/requests/<int:rid>/<verdict>")
+def decide_request(rid, verdict):
+    require_admin()
+    r = db().execute("SELECT * FROM number_requests WHERE id=? AND status='pending'",
+                     (rid,)).fetchone() or abort(404)
+    if verdict == "approve":
+        num = r["requested"] or next_free_number()
+        if not num or number_error(num):
+            return page("error", message="requested number no longer available"), 409
+        db().execute("UPDATE devices SET number=? WHERE id=?", (num, r["device_id"]))
+        db().execute("UPDATE number_requests SET status='approved' WHERE id=?", (rid,))
+        db().commit()
+        render_pjsip()
+    else:
+        db().execute("UPDATE number_requests SET status='rejected' WHERE id=?", (rid,))
+        db().commit()
+    return redirect(url_for("admin"))
+
+
+# ------------------------------------------------------------------ templates
+
+BASE = """<!doctype html><meta name=viewport content="width=device-width,initial-scale=1">
+<title>Phone-omenal switchboard</title>
+<style>body{font:16px system-ui;max-width:52em;margin:2em auto;padding:0 1em}
+table{border-collapse:collapse;width:100%;margin:.5em 0}
+td,th{border:1px solid #ccc;padding:.35em .6em;text-align:left}
+input,button{padding:.4em;margin:.15em 0}form.inline{display:inline}
+.ok{color:#0a0}.bad{color:#a00}.card{background:#f4f4f4;padding:1em;border-radius:.5em;margin:1em 0}
+nav{margin-bottom:1.5em}</style>
+<nav><b>&#128222; Phone-omenal switchboard</b>
+{% if user %} — {{ user.username }} · <a href="/logout">log out</a>{% endif %}</nav>
+{{ body|safe }}"""
+
+TEMPLATES = {
+"login": """<h2>Log in</h2>{% if error %}<p class=bad>{{ error }}</p>{% endif %}
+<form method=post><input name=username placeholder=username required>
+<input name=password type=password placeholder=password required>
+<button>Log in</button></form>""",
+
+"home": """<h2>Your devices</h2>
+<table><tr><th>Device</th><th>Number</th><th>Status</th><th></th></tr>
+{% for d in devices %}<tr><td><a href="/devices/{{ d.id }}">{{ d.name }}</a></td>
+<td>{{ d.number or '—' }}</td>
+<td>{% if d.number %}{% if d.number in online %}<span class=ok>&#9679; registered</span>
+{% else %}<span class=bad>&#9675; offline</span>{% endif %}
+{% elif d.req_status == 'pending' %}number requested…
+{% else %}no number{% endif %}</td>
+<td>{% if not d.number and d.req_status != 'pending' %}
+<form class=inline method=post action="/devices/{{ d.id }}/request-number">
+<input name=number placeholder="number (blank = any)" size=14>
+<button>Request</button></form>{% endif %}</td></tr>{% endfor %}</table>
+<div class=card><form method=post action="/devices">
+<input name=name placeholder="new device name">
+<button>Add device</button></form></div>
+<p>Numbers are 3–6 digits and never start with 0. Problems? Contact your
+switchboard admin: <b>{{ admin_email }}</b></p>""",
+
+"device": """<h2>{{ d.name }}</h2>
+<div class=card>Number: <b>{{ d.number or 'not assigned yet' }}</b>
+{% if d.number %} — {% if online %}<span class=ok>registered</span>
+{% else %}<span class=bad>offline</span>{% endif %}<br>
+SIP username: <code>{{ d.number }}</code> · SIP password:
+<code>{{ d.sip_password }}</code> (enter these on the box's config page)
+{% endif %}</div>
+<h3>Call log</h3>
+{% if log %}<table><tr><th>When</th><th>From</th><th>To</th><th>Seconds</th><th>Result</th></tr>
+{% for c in log %}<tr><td>{{ c.start }}</td><td>{{ c.src }}</td><td>{{ c.dst }}</td>
+<td>{{ c.seconds }}</td><td>{{ c.result }}</td></tr>{% endfor %}</table>
+{% else %}<p>No calls yet.</p>{% endif %}<p><a href="/">&larr; back</a></p>""",
+
+"admin": """<h2>Pending number requests</h2>
+{% if requests %}<table><tr><th>User</th><th>Device</th><th>Wants</th><th></th></tr>
+{% for r in requests %}<tr><td>{{ r.owner }}</td><td>{{ r.device_name }}</td>
+<td>{{ r.requested or 'next available' }}</td>
+<td><form class=inline method=post action="/admin/requests/{{ r.id }}/approve">
+<button>Approve</button></form>
+<form class=inline method=post action="/admin/requests/{{ r.id }}/reject">
+<button>Reject</button></form></td></tr>{% endfor %}</table>
+{% else %}<p>None.</p>{% endif %}
+
+<h2>Devices</h2>
+<table><tr><th>Owner</th><th>Device</th><th>Number</th><th>Status</th><th></th></tr>
+{% for d in devices %}<tr><td>{{ d.owner }}</td>
+<td><a href="/devices/{{ d.id }}">{{ d.name }}</a></td><td>{{ d.number or '—' }}</td>
+<td>{% if d.number in online %}<span class=ok>&#9679;</span>{% else %}
+<span class=bad>&#9675;</span>{% endif %}</td>
+<td>{% if d.number %}<form class=inline method=post action="/admin/release/{{ d.id }}">
+<button>Release number</button></form>
+{% else %}<form class=inline method=post action="/admin/assign">
+<input type=hidden name=device_id value="{{ d.id }}">
+<input name=number placeholder=number size=8><button>Assign</button></form>
+{% endif %}</td></tr>{% endfor %}</table>
+
+<h2>Users</h2>
+<table><tr><th>Username</th><th>Email</th><th>Role</th></tr>
+{% for u in users %}<tr><td>{{ u.username }}</td><td>{{ u.email }}</td>
+<td>{{ 'admin' if u.is_admin else 'user' }}{{ ' (disabled)' if u.disabled }}</td></tr>
+{% endfor %}</table>
+<div class=card><form method=post action="/admin/users">
+<input name=username placeholder=username required>
+<input name=email placeholder=email type=email>
+<input name=password placeholder="password (blank = generate)">
+<button>Create user</button></form></div>""",
+
+"user_created": """<h2>User created</h2>
+<div class=card>Username: <code>{{ username }}</code><br>
+Password: <code>{{ password }}</code> — share it now; it isn't shown again.</div>
+<p><a href="/admin">&larr; back</a></p>""",
+
+"error": """<h2 class=bad>Can't do that</h2><p>{{ message }}</p>
+<p><a href="javascript:history.back()">&larr; back</a></p>""",
+}
+
+
+def page(name, **ctx):
+    # render the body first, then pass it into the frame as data (|safe) —
+    # never splice rendered HTML back into template source
+    ctx.setdefault("user", current_user())
+    body = render_template_string(TEMPLATES[name], **ctx)
+    return render_template_string(BASE, user=ctx["user"], body=body)
+
+
+if __name__ == "__main__":
+    bootstrap()
+    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", "8080")))

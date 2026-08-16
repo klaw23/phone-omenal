@@ -29,8 +29,8 @@ milestones — each one ends with something you can see or hear:
 
 | Path | What |
 |---|---|
-| `docs/` | **The build guide — start here** |
-| `server/` | Asterisk switchboard: `docker compose up -d` and go |
+| `docs/` | **The build guide — start here** · plus the provisioning & switchboard spec |
+| `server/` | Asterisk switchboard + management web app: `docker compose up -d` and go |
 | `firmware/` | Milestone example code matching the guide |
 | `hardware/enclosure/` | Model 01 printed enclosure (OpenSCAD + STLs + 3D viewer) — fits the guide's electronics once they graduate from breadboard to perfboard |
 | `future/` | Future work, tucked away: the Model 02 custom PCB and its smaller enclosure. Ignore until the breadboard build is making calls |
