@@ -358,10 +358,9 @@ face-down, supports only under the rear slot. Assembly: four M3×12 into the
 posts, RJ11 keystone snaps into the front. The rotary-dial vent pattern on the
 lid is load-bearing for morale.
 
-When you outgrow the breadboard entirely, `hardware/pcb/` contains the next
-chapter: a custom 80×54mm board (KiCad file, Gerbers, BOM) that collapses all
-of this into one $25 assembled PCB — same SLIC module, same firmware, same
-enclosure design language.
+(Much later, when the breadboard build is boring because it just works:
+`future/model02/` holds a designed-but-unbuilt custom PCB that collapses all of
+this into one small board. It's future work — ignore it for now.)
 
 ---
 
