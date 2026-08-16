@@ -107,15 +107,33 @@ you'll know the server side is solid — halving every future debugging search.
 
 You need a machine for **Asterisk**, the open-source phone switch: a $5 VPS, a
 Raspberry Pi, or your laptop (fine for the desk phase; the box needs to reach it
-over the LAN). With the `server/` directory from this repo:
+over the LAN).
+
+**Path A — Docker** (laptop, VPS, Pi 3+/64-bit): with the `server/` directory
+from this repo:
 
 ```bash
 cd server
 docker compose up -d
 ```
 
-That starts Asterisk with three extensions defined: `101`, `102` (phones) and
-`600` (an echo test — it answers and plays your own voice back).
+**Path B — native install** (best for older Pis like the Pi 2, whose 32-bit ARM
+makes Docker images scarce — and a Pi 2 handles this job with ease; G.711 calls
+relay with near-zero CPU):
+
+```bash
+sudo apt update && sudo apt install asterisk
+sudo cp server/asterisk/pjsip.conf server/asterisk/extensions.conf /etc/asterisk/
+sudo systemctl restart asterisk
+sudo asterisk -rx "pjsip show endpoints"    # should list 101, 102, 103
+```
+
+Shelf-duty tips for a Pi server: a proper 2A power supply (undervoltage is the
+classic source of mystery flakiness), a decent SD card, and a static IP or DHCP
+reservation so the phones' registration target never moves.
+
+Either path starts Asterisk with three extensions defined: `101`, `102`, `103`
+(phones) and `600` (an echo test — it answers and plays your own voice back).
 
 Now install **Linphone** (free softphone) on your laptop and phone. Register two
 accounts against your server: username `101` password `changeme-101` and `102`/
