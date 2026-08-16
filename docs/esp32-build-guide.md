@@ -1,4 +1,4 @@
-# Building the Open Phone — ESP32 breadboard guide
+# Building the Phone-omenal — ESP32 breadboard guide
 
 This guide takes you from zero hardware experience to a rotary phone on your desk
 making SIP calls through an ESP32. It's written for a software engineer: every

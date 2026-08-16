@@ -1,4 +1,4 @@
-# Open Phone Co. 📞
+# Phone-omenal 📞
 
 **An open source telephone.** A box with an analog phone jack: plug in any
 phone — a 1962 rotary, a Mickey Mouse phone, whatever the thrift store had —

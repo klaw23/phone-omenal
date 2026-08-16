@@ -1,4 +1,4 @@
-# Open Phone Co. — Model 02 board design package
+# Phone-omenal — Model 02 board design package
 
 A single custom PCB that replaces the ESP32 Audio Kit + perfboard + breakout modules
 from the Model 01 prototype. Design goal: **compactness** — one board, one USB-C cable,
