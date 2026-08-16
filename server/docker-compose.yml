@@ -1,0 +1,12 @@
+# NOTE: host networking keeps SIP/RTP simple on Linux. On macOS/Windows Docker,
+# host mode doesn't exist; expose 5060/udp and 10000-10100/udp instead and set
+# rtp.conf to that range.
+services:
+  asterisk:
+    image: andrius/asterisk:latest
+    container_name: openphone-switchboard
+    network_mode: host
+    restart: unless-stopped
+    volumes:
+      - ./asterisk/pjsip.conf:/etc/asterisk/pjsip.conf:ro
+      - ./asterisk/extensions.conf:/etc/asterisk/extensions.conf:ro
