@@ -93,7 +93,7 @@
 [silk_overlap]: Silkscreen overlap
     Rule: board setup constraints silk; Severity: warning
     @(28.5000 mm, 18.3200 mm): Reference 'C4'
-    @(40.0000 mm, 17.5000 mm): PCB Text 'OPEN PHONE CO.  MODEL 02' on F.Silkscreen
+    @(40.0000 mm, 17.5000 mm): PCB Text 'PHONE-OMENAL  MODEL 02' on F.Silkscreen
 [silk_overlap]: Silkscreen overlap
     Rule: board setup constraints silk; Severity: warning
     @(10.0000 mm, 33.3000 mm): Reference 'H3'
@@ -121,31 +121,31 @@
 [silk_overlap]: Silkscreen overlap
     Rule: board setup constraints silk; Severity: warning
     @(47.0000 mm, 17.0600 mm): Line on F.Silkscreen
-    @(40.0000 mm, 17.5000 mm): PCB Text 'OPEN PHONE CO.  MODEL 02' on F.Silkscreen
+    @(40.0000 mm, 17.5000 mm): PCB Text 'PHONE-OMENAL  MODEL 02' on F.Silkscreen
 [silk_overlap]: Silkscreen overlap
     Rule: board setup constraints silk; Severity: warning
     @(47.0000 mm, 18.3700 mm): Reference 'R1'
-    @(40.0000 mm, 17.5000 mm): PCB Text 'OPEN PHONE CO.  MODEL 02' on F.Silkscreen
+    @(40.0000 mm, 17.5000 mm): PCB Text 'PHONE-OMENAL  MODEL 02' on F.Silkscreen
 [silk_overlap]: Silkscreen overlap
     Rule: board setup constraints silk; Severity: warning
     @(47.0000 mm, 17.0600 mm): Line on F.Silkscreen
-    @(40.0000 mm, 17.5000 mm): PCB Text 'OPEN PHONE CO.  MODEL 02' on F.Silkscreen
+    @(40.0000 mm, 17.5000 mm): PCB Text 'PHONE-OMENAL  MODEL 02' on F.Silkscreen
 [silk_overlap]: Silkscreen overlap
     Rule: board setup constraints silk; Severity: warning
     @(50.0000 mm, 18.5700 mm): Reference 'R10'
-    @(40.0000 mm, 17.5000 mm): PCB Text 'OPEN PHONE CO.  MODEL 02' on F.Silkscreen
+    @(40.0000 mm, 17.5000 mm): PCB Text 'PHONE-OMENAL  MODEL 02' on F.Silkscreen
 [silk_overlap]: Silkscreen overlap
     Rule: board setup constraints silk; Severity: warning
     @(70.4500 mm, 27.1000 mm): Line on F.Silkscreen
     @(70.0000 mm, 40.3000 mm): Reference 'H4'
 [silk_overlap]: Silkscreen overlap
     Rule: board setup constraints silk; Severity: warning
-    @(40.0000 mm, 17.5000 mm): PCB Text 'OPEN PHONE CO.  MODEL 02' on F.Silkscreen
+    @(40.0000 mm, 17.5000 mm): PCB Text 'PHONE-OMENAL  MODEL 02' on F.Silkscreen
     @(57.5000 mm, 18.0700 mm): Reference 'R16'
 [silk_overlap]: Silkscreen overlap
     Rule: board setup constraints silk; Severity: warning
     @(54.0000 mm, 16.5700 mm): Reference 'R15'
-    @(40.0000 mm, 17.5000 mm): PCB Text 'OPEN PHONE CO.  MODEL 02' on F.Silkscreen
+    @(40.0000 mm, 17.5000 mm): PCB Text 'PHONE-OMENAL  MODEL 02' on F.Silkscreen
 [silk_overlap]: Silkscreen overlap
     Rule: board setup constraints silk; Severity: warning
     @(57.5000 mm, 18.0700 mm): Reference 'R16'
@@ -156,11 +156,11 @@
     @(58.5000 mm, 18.5600 mm): Line on F.Silkscreen
 [silk_overlap]: Silkscreen overlap
     Rule: board setup constraints silk; Severity: warning
-    @(40.0000 mm, 17.5000 mm): PCB Text 'OPEN PHONE CO.  MODEL 02' on F.Silkscreen
+    @(40.0000 mm, 17.5000 mm): PCB Text 'PHONE-OMENAL  MODEL 02' on F.Silkscreen
     @(53.5000 mm, 18.5700 mm): Reference 'R11'
 [silk_overlap]: Silkscreen overlap
     Rule: board setup constraints silk; Severity: warning
-    @(40.0000 mm, 17.5000 mm): PCB Text 'OPEN PHONE CO.  MODEL 02' on F.Silkscreen
+    @(40.0000 mm, 17.5000 mm): PCB Text 'PHONE-OMENAL  MODEL 02' on F.Silkscreen
     @(53.7627 mm, 17.4775 mm): Line on F.Silkscreen
 [silk_overlap]: Silkscreen overlap
     Rule: board setup constraints silk; Severity: warning
@@ -176,7 +176,7 @@
     @(70.0000 mm, 40.3000 mm): Reference 'H4'
 [silk_over_copper]: Silkscreen clipped by solder mask
     Local override; Severity: warning
-    @(40.0000 mm, 17.5000 mm): PCB Text 'OPEN PHONE CO.  MODEL 02' on F.Silkscreen
+    @(40.0000 mm, 17.5000 mm): PCB Text 'PHONE-OMENAL  MODEL 02' on F.Silkscreen
 [silk_over_copper]: Silkscreen clipped by solder mask
     Local override; Severity: warning
     @(10.0000 mm, 33.3000 mm): Reference 'H3'

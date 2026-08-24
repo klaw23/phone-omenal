@@ -212,7 +212,7 @@ def silk(text, x, y, size=1.2, layer=pcbnew.F_SilkS):
     t.SetText(text); t.SetPosition(V(x, y)); t.SetLayer(layer)
     t.SetTextSize(VECTOR2I(MM(size), MM(size))); t.SetTextThickness(MM(size*0.15))
     board.Add(t)
-silk("OPEN PHONE CO.  MODEL 02", 40, 17.5, 1.5)
+silk("PHONE-OMENAL  MODEL 02", 40, 17.5, 1.5)
 silk("TIP", 20, 44.5, 0.9); silk("RING", 30.5, 44.5, 0.9)
 silk("SLIC KS0835F pin1", 29, 26.8, 0.9)
 silk("open source telephone - CERN-OHL-S", 40, 30, 1.0, pcbnew.B_SilkS)

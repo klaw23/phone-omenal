@@ -19,7 +19,7 @@ rather than cloning something monolithic you didn't write yet.
 Milestone 5 (the actual SIP call) builds on
 [ESP32-SIP-Voice](https://github.com/GeorgeBregman/ESP32-SIP-Voice) (MIT) —
 the guide describes the grafting points. Once that integration exists as real
-code, it lives here as `openphone-fw/`.
+code, it lives here as `phone-omenal-fw/`.
 
 GPIO assignments live at the top of each file; the guide's "AudioKit pin
 caveat" explains why you might need to change them for your board revision.

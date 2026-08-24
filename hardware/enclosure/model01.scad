@@ -1,5 +1,5 @@
 // ============================================================
-//  OPEN PHONE CO. — "Model 01" enclosure
+//  PHONE-OMENAL — "Model 01" enclosure
 //  Open-source enclosure for an ESP32 SIP phone box:
 //    - Ai-Thinker ESP32-A1S Audio Kit (~90 x 60 mm)  [measure yours!]
 //    - 60x40 perfboard carrying KS0835F SLIC + MT8870 + level shifter
@@ -43,7 +43,7 @@ post_r = 4.6; screw_pilot = 2.7; screw_head = 6.4; screw_shaft = 3.4;
 // lid vent: rotary-dial pattern
 dial_cx = 49; dial_cy = 52; dial_r = 22; dial_hole_d = 9; dial_n = 10;
 
-label_text = "OPEN PHONE CO.";
+label_text = "PHONE-OMENAL";
 label_sub  = "MODEL 01";
 
 /* ---------- derived ---------- */
