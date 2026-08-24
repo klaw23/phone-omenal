@@ -16,6 +16,8 @@ extensions 101–103 so softphone testing works immediately.
 
 ## Docker (laptop/VPS/64-bit Pi)
 
+On **Linux** (including a 64-bit Pi), host networking keeps SIP/RTP simple:
+
 ```bash
 docker compose up -d
 # web UI:
@@ -25,6 +27,19 @@ docker exec -it phone-omenal-switchboard asterisk -rx "pjsip show contacts"
 # watch RTP while debugging audio:
 docker exec -it phone-omenal-switchboard asterisk -rx "rtp set debug on"
 ```
+
+On **macOS/Windows** there is no host networking — Docker Desktop's "host" is
+its Linux VM, so the containers come up healthy but `localhost:8080` refuses
+the connection. Add the override, which publishes real ports and joins the app
+to Asterisk's network namespace (so AMI stays on loopback, as on the Pi):
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.mac.yml up -d --build
+```
+
+It publishes 8080/tcp, 5060/udp, and the RTP range in `asterisk/rtp.conf`
+(10000-10030 — deliberately narrow; every published UDP port costs a userland
+proxy on Docker Desktop).
 
 Before exposing anything beyond your LAN: set `ADMIN_PASSWORD`,
 `SWITCHBOARD_SECRET`, and the AMI secret (`asterisk/manager.conf` +
