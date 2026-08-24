@@ -21,9 +21,9 @@ docker compose up -d
 # web UI:
 open http://localhost:8080     # log in: admin / changeme-admin (CHANGE IT)
 # verify registrations:
-docker exec -it openphone-switchboard asterisk -rx "pjsip show contacts"
+docker exec -it phone-omenal-switchboard asterisk -rx "pjsip show contacts"
 # watch RTP while debugging audio:
-docker exec -it openphone-switchboard asterisk -rx "rtp set debug on"
+docker exec -it phone-omenal-switchboard asterisk -rx "rtp set debug on"
 ```
 
 Before exposing anything beyond your LAN: set `ADMIN_PASSWORD`,

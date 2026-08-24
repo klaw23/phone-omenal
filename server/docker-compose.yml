@@ -1,10 +1,12 @@
 # NOTE: host networking keeps SIP/RTP simple on Linux. On macOS/Windows Docker,
 # host mode doesn't exist; expose 5060/udp and 10000-10100/udp instead and set
 # rtp.conf to that range.
+name: phone-omenal
+
 services:
   asterisk:
     image: andrius/asterisk:latest
-    container_name: openphone-switchboard
+    container_name: phone-omenal-switchboard
     network_mode: host
     restart: unless-stopped
     volumes:
@@ -20,7 +22,7 @@ services:
   # accounts, devices, numbers, call logs — http://<server>:8080
   switchboard:
     build: ./switchboard
-    container_name: openphone-switchboard-app
+    container_name: phone-omenal-switchboard-app
     network_mode: host          # AMI on 127.0.0.1:5038, web on :8080
     restart: unless-stopped
     environment:

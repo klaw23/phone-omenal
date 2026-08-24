@@ -1,5 +1,5 @@
 // ============================================================
-//  OPEN PHONE CO. — "Model 02" enclosure
+//  PHONE-OMENAL — "Model 02" enclosure
 //  Built around the custom 80x54mm PCB (see model02_board_design.md):
 //  on-board RJ11, USB-C, WS2812 light pipe, SLIC module lying flat.
 //  License: CERN-OHL-S / CC-BY-SA
@@ -34,7 +34,7 @@ post_pts = [[pin,pin],[ix-pin,pin],[pin,iy-pin],[ix-pin,iy-pin]];
 // rotary-dial vents
 dial_cx = 24; dial_cy = 32; dial_r = 14; dial_hole_d = 6.5; dial_n = 10;
 
-label_text = "OPEN PHONE CO.";
+label_text = "PHONE-OMENAL";
 label_sub  = "MODEL 02";
 
 ox = ix + 2*wall; oy = iy + 2*wall; base_h = floor_th + iz;
