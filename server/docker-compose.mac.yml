@@ -1,0 +1,30 @@
+# macOS / Windows Docker override.
+#
+# The base file uses `network_mode: host`, which on Docker Desktop means the
+# Linux VM's network — not your Mac's. The containers run fine, but nothing is
+# reachable from the desktop, so http://localhost:8080 refuses the connection.
+#
+# This override puts asterisk on a bridge network with real published ports,
+# and joins the switchboard app to asterisk's network namespace so its AMI
+# client still finds Asterisk on 127.0.0.1:5038 — manager.conf stays
+# loopback-only, as on the Pi.
+#
+#   docker compose -f docker-compose.yml -f docker-compose.mac.yml up -d --build
+#
+services:
+  asterisk:
+    network_mode: bridge
+    ports:
+      - "8080:8080"            # switchboard web UI (shares this namespace)
+      - "5060:5060/udp"        # SIP
+      - "10000-10030:10000-10030/udp"  # RTP — matches asterisk/rtp.conf
+    volumes:
+      - ./asterisk/rtp.conf:/etc/asterisk/rtp.conf:ro
+      # tells Asterisk to advertise the Mac's LAN IP in SDP instead of its
+      # container IP — without this, calls connect but carry no audio
+      - ./asterisk/pjsip_nat.mac.conf:/etc/asterisk/pjsip_nat.conf:ro
+
+  switchboard:
+    # same netns as asterisk: AMI on 127.0.0.1:5038 works unchanged, and the
+    # web UI is published by the asterisk service above.
+    network_mode: "service:asterisk"
