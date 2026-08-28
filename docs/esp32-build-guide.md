@@ -233,21 +233,66 @@ pyenv which python3       # the real binary it points at
 
 If setup fails on Python, point the extension at the real binary rather than the
 shim: setting `idf.pythonInstallPath`, or the custom-path field in Express
-install. Use something in the **3.9–3.12** range; ESP-IDF v5.x has not caught up
-with 3.13+, so a bleeding-edge Homebrew Python is a worse choice than an older
-managed one.
+install. Prefer a **3.9–3.12** interpreter unless your IDF version's release
+notes say otherwise — IDF trails new Python releases, so a bleeding-edge
+Homebrew Python is a worse choice than an older managed one.
 
 ### 4d. Install ESP-IDF and flash hello world
 
-1. Install **ESP-IDF** via the official VS Code extension ("ESP-IDF" by
-   Espressif → "Express install", pick the latest v5.x). This gives you the
-   compiler, flasher, and serial monitor in one.
-2. Plug in the AudioKit. A serial port should appear (`/dev/ttyUSB0`,
-   `/dev/cu.usbserial-*`, or `COMx`). If not: it's almost always the USB cable
-   (charge-only) or the CP210x driver on macOS/Windows — Espressif's docs
-   "establish serial connection" page covers both.
-3. New project from template → `hello_world` → set target `esp32` (the AudioKit
-   is a classic ESP32, not S3) → Build, Flash, Monitor.
+**1. Install ESP-IDF** via the VS Code extension ("ESP-IDF" by Espressif →
+"Express install", pick the latest v5.x). This gives you the compiler, flasher,
+and serial monitor in one.
+
+**2. Plug the AudioKit into the right socket.** The board has *two* micro-USB
+ports. Use the one labelled **UART** — it's wired to the onboard CP2102
+USB-to-serial bridge and carries 5V as well as data, so a single cable both
+powers and flashes the board. The other port is power-only; its data lines go
+nowhere, so the board lights up but no serial device ever appears. (That second
+port earns its keep at Milestone 2: ringing draws far more current than a laptop
+USB port likes, and you can feed it 5V/2A there while keeping the laptop on
+UART.)
+
+**3. Confirm the serial port appeared.** It's a device file, not a notification:
+
+```bash
+ls /dev/cu.*           # macOS — run before and after plugging in
+ls /dev/ttyUSB*        # Linux
+```
+
+Look for a new `/dev/cu.usbserial-*` or `/dev/cu.SLAB_USBtoUART` (Windows:
+a new `COMx` in Device Manager). On macOS use **`cu.*`, not `tty.*`** — the
+`tty.*` node blocks waiting for a carrier-detect signal the board never
+asserts, which hangs esptool in a way that looks like dead hardware.
+
+Nothing there? This one command tells you which of two very different problems
+you have:
+
+```bash
+system_profiler SPUSBDataType | grep -iE 'CP210|Silicon Labs|CH34|FTDI'
+```
+
+- **Prints something, but no `/dev/cu.*`** — the chip enumerated and the driver
+  didn't bind. Uncommon on current macOS, which ships a CP210x driver; this is
+  when you go get Silicon Labs' VCP driver.
+- **Prints nothing** — the board isn't reaching USB at all. In order of
+  likelihood: wrong socket (see step 2), a charge-only USB cable, dead board.
+
+**4. Create the project.** In extension v2.x:
+
+```
+Cmd/Ctrl+Shift+P → ESP-IDF: New Project
+```
+
+Name it, then pick `hello_world` from **get-started** in the template chooser.
+Set the target to **`esp32`** — the AudioKit is a classic ESP32, not an S3.
+Then Build, Flash, Monitor.
+
+> Older tutorials tell you to run **ESP-IDF: Show Examples Projects**. That
+> command no longer exists; examples now live inside the New Project wizard.
+> `ESP-IDF: Create New Empty Project` is a different thing — a bare skeleton,
+> which defeats the point of a known-good smoke test. If you want a guided
+> version matched to your installed extension, run `Welcome: Open Walkthrough`
+> → ESP-IDF; "Creating an Example Project" is step 3.
 
 When `Hello world!` scrolls past at 115200 baud, your toolchain is proven.
 IDF's build/flash/monitor loop is your inner dev loop from here on — treat
@@ -472,7 +517,7 @@ this into one small board. It's future work — ignore it for now.)
 
 | Symptom | Usual culprit |
 |---|---|
-| No serial port | Charge-only USB cable (swap it), then CP210x driver |
+| No serial port | Wrong micro-USB socket (use the **UART** one, §4d), then charge-only USB cable, then CP210x driver. `system_profiler SPUSBDataType \| grep CP210` tells you which |
 | Extension says a prerequisite is missing (`dfu-util`, `cmake`, `ninja`) | Install it (§4a) and reopen VS Code. If it's installed and *still* reported missing on macOS, the extension can't see Homebrew — §4b |
 | ESP-IDF setup fails on Python | `python3` is probably a pyenv/asdf shim; point the extension at the real binary, Python 3.9–3.12 (§4c) |
 | Boot loops / flash fails | Hold BOOT during flash; check DIP switches off; try lower baud |
