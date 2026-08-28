@@ -240,8 +240,12 @@ Homebrew Python is a worse choice than an older managed one.
 ### 4d. Install ESP-IDF and flash hello world
 
 **1. Install ESP-IDF** via the VS Code extension ("ESP-IDF" by Espressif →
-"Express install", pick the latest v5.x). This gives you the compiler, flasher,
-and serial monitor in one.
+"Express install"). Take **v6.0.2**, the current stable release. This gives you
+the compiler, flasher, and serial monitor in one.
+
+The installer can keep several versions side by side, and **ESP-IDF: Select
+Current ESP-IDF Version** switches between them — useful if a third-party
+component you pull in later has not caught up with v6 yet.
 
 **2. Plug the AudioKit into the right socket.** The board has *two* micro-USB
 ports. Use the one labelled **UART** — it's wired to the onboard CP2102
@@ -293,6 +297,21 @@ Then Build, Flash, Monitor.
 > which defeats the point of a known-good smoke test. If you want a guided
 > version matched to your installed extension, run `Welcome: Open Walkthrough`
 > → ESP-IDF; "Creating an Example Project" is step 3.
+
+If the wizard stops with **"no framework selected to load examples"**, the
+extension does not know which ESP-IDF install to draw them from:
+
+1. `Developer: Reload Window` — settings written during setup are often not
+   live until the window reloads.
+2. `ESP-IDF: Select Current ESP-IDF Version` → pick your install.
+3. In the wizard's template step, check the framework dropdown actually reads
+   **ESP-IDF**.
+
+Note that extension v2.x stores this in a single setting, `idf.currentSetup`,
+replacing the older `idf.espIdfPath` / `idf.toolsPath` pair that most
+tutorials still reference. Setup writes it to the **workspace** it was run in,
+so opening a different folder can leave you with no framework selected again —
+copy it into your User settings if you want it everywhere.
 
 When `Hello world!` scrolls past at 115200 baud, your toolchain is proven.
 IDF's build/flash/monitor loop is your inner dev loop from here on — treat
@@ -519,6 +538,7 @@ this into one small board. It's future work — ignore it for now.)
 |---|---|
 | No serial port | Wrong micro-USB socket (use the **UART** one, §4d), then charge-only USB cable, then CP210x driver. `system_profiler SPUSBDataType \| grep CP210` tells you which |
 | Extension says a prerequisite is missing (`dfu-util`, `cmake`, `ninja`) | Install it (§4a) and reopen VS Code. If it's installed and *still* reported missing on macOS, the extension can't see Homebrew — §4b |
+| "No framework selected to load examples" | Reload the window, then `ESP-IDF: Select Current ESP-IDF Version`. The setting is per-workspace (§4d) |
 | ESP-IDF setup fails on Python | `python3` is probably a pyenv/asdf shim; point the extension at the real binary, Python 3.9–3.12 (§4c) |
 | Boot loops / flash fails | Hold BOOT during flash; check DIP switches off; try lower baud |
 | SHK never changes | Divider mis-wired; multimeter the tap: ~3V off-hook. Or PD pin left high |

@@ -2,7 +2,7 @@
 
 Milestone example code referenced by the build guide
 (`docs/esp32-build-guide.md`). Each file is the core of one milestone, written
-for ESP-IDF v5.x on the ESP32-A1S Audio Kit. They're deliberately small —
+for ESP-IDF v6.0.2 on the ESP32-A1S Audio Kit. They're deliberately small —
 paste into an `idf.py create-project` skeleton as you reach each milestone,
 rather than cloning something monolithic you didn't write yet.
 
