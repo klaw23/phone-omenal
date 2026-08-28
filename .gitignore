@@ -3,3 +3,5 @@ sdkconfig
 *.pyc
 __pycache__/
 node_modules/
+# ESP-IDF extension writes machine-specific absolute paths here
+.vscode/
