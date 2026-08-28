@@ -157,6 +157,88 @@ unusual SIP client."
 
 ## 4. Milestone 0.5 — toolchain and hello world
 
+### 4a. Prerequisites the extension will *not* install for you
+
+The ESP-IDF extension (and the newer ESP-IDF Installation Manager) downloads the
+compiler, flasher, and Python environment itself — but it expects a handful of
+system tools to already exist, and it refuses to go any further if one is
+missing. On a fresh Mac the usual complaint is **`dfu-util`**.
+
+Install them first:
+
+```bash
+# macOS
+brew install dfu-util ccache cmake ninja
+xcode-select --install          # only if `git` is missing
+
+# Debian / Ubuntu / Raspberry Pi OS
+sudo apt install git wget flex bison gperf python3 python3-venv python3-pip \
+     cmake ninja-build ccache libffi-dev libssl-dev dfu-util libusb-1.0-0
+```
+
+On Windows, use Espressif's **offline installer** instead — it bundles all of
+this and sidesteps the whole problem.
+
+Check them before you open the editor. Every line must say a path:
+
+```bash
+for t in dfu-util ccache cmake ninja python3 git; do
+  printf '%-10s %s\n' "$t" "$(command -v $t || echo MISSING)"
+done
+```
+
+### 4b. macOS: if it *still* says missing after you installed it
+
+Usually installing the tool is the whole fix — reopen VS Code and the check
+passes. If a prerequisite you know is installed is still reported missing, the
+cause is almost always that the extension can't see Homebrew.
+
+Apps launched from the Dock inherit only a bare `/usr/bin:/bin:/usr/sbin:/sbin`
+from `launchd`, and Homebrew lives in `/opt/homebrew/bin` (Apple Silicon) or
+`/usr/local/bin` (Intel). VS Code normally works around this: on macOS it spawns
+your login shell at startup and adopts its environment, so extensions do get
+your real `PATH`. But that resolution can fail — an unusual shell, a `.zshrc`
+that exits early under non-interactive use, or a slow profile that times out.
+
+Check whether your login shell exposes the tool at all:
+
+```bash
+/bin/zsh -lic 'command -v dfu-util'
+```
+
+If that prints a path but the extension still disagrees, launch VS Code from a
+terminal so it inherits the environment directly rather than deriving it:
+
+1. `Cmd+Shift+P` → **Shell Command: Install 'code' command in PATH**
+2. Quit VS Code with `Cmd+Q` — closing the window leaves the old process and
+   its environment alive.
+3. `code /path/to/phone-omenal`
+
+Note this is per-launch, not a one-time repair: a process takes its environment
+at start, so a Dock launch tomorrow gets the old behaviour again. If you need it
+permanently, fix the environment rather than the launch method — make sure the
+Homebrew `shellenv` line is somewhere your login shell reads unconditionally,
+or set a `PATH` for GUI apps via a LaunchAgent.
+
+### 4c. Python: beware version managers
+
+ESP-IDF builds its own virtualenv, but it needs a real interpreter to build it
+*from*. If your `python3` is a **pyenv/asdf shim**, the extension may fail to
+resolve it — shims depend on shell initialisation that a GUI process never ran.
+
+```bash
+command -v python3        # a path under ~/.pyenv/shims is the warning sign
+pyenv which python3       # the real binary it points at
+```
+
+If setup fails on Python, point the extension at the real binary rather than the
+shim: setting `idf.pythonInstallPath`, or the custom-path field in Express
+install. Use something in the **3.9–3.12** range; ESP-IDF v5.x has not caught up
+with 3.13+, so a bleeding-edge Homebrew Python is a worse choice than an older
+managed one.
+
+### 4d. Install ESP-IDF and flash hello world
+
 1. Install **ESP-IDF** via the official VS Code extension ("ESP-IDF" by
    Espressif → "Express install", pick the latest v5.x). This gives you the
    compiler, flasher, and serial monitor in one.
@@ -391,6 +473,8 @@ this into one small board. It's future work — ignore it for now.)
 | Symptom | Usual culprit |
 |---|---|
 | No serial port | Charge-only USB cable (swap it), then CP210x driver |
+| Extension says a prerequisite is missing (`dfu-util`, `cmake`, `ninja`) | Install it (§4a) and reopen VS Code. If it's installed and *still* reported missing on macOS, the extension can't see Homebrew — §4b |
+| ESP-IDF setup fails on Python | `python3` is probably a pyenv/asdf shim; point the extension at the real binary, Python 3.9–3.12 (§4c) |
 | Boot loops / flash fails | Hold BOOT during flash; check DIP switches off; try lower baud |
 | SHK never changes | Divider mis-wired; multimeter the tap: ~3V off-hook. Or PD pin left high |
 | Rings weakly / not at all | 5V rail sagging — add bulk capacitance; check RM/FR wires; some phones' ringers have a switch (ringer OFF slider!) |
