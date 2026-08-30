@@ -467,9 +467,53 @@ is right and anything remaining is firmware.
 > yours prints something like `IO19 / KEY3`, the board is telling you the pin is
 > already taken. Leave the SD slot empty and all DIP switches OFF regardless.
 
-Firmware — `firmware/examples/01_hook.c` (paste into your hello-world `main`):
+### Firmware — the paste-into-hello-world loop
+
+Each milestone reuses the hello-world project from §4: **select all in
+`main/hello_world_main.c`, replace with the milestone's code, rebuild, flash.**
+One project, one file, and the diff between milestones is exactly the code you
+just read. The snippets below are complete — includes and all — and match the
+files in `firmware/examples/`, which are the canonical copies.
+
+Two things about the build system before the first paste:
+
+**How the build knows what to compile:** `main/CMakeLists.txt` lists it
+explicitly —
+
+```cmake
+idf_component_register(SRCS "hello_world_main.c"
+                       PRIV_REQUIRES spi_flash
+                       INCLUDE_DIRS "")
+```
+
+`SRCS` names the source files; that's why replacing the *contents* of
+`hello_world_main.c` needs no build changes, while adding a second `.c` file
+would mean listing it here (and two files each defining `app_main` won't link).
+
+**One edit you must make (once):** the hello-world template sets
+`MINIMAL_BUILD ON` in the root `CMakeLists.txt`, so only components `main`
+declares get built. The milestone code uses GPIO and the high-resolution
+timer, which aren't in the default list — pasting without this edit fails with
+`fatal error: driver/gpio.h: No such file or directory`. Change the
+`PRIV_REQUIRES` line to:
+
+```cmake
+                       PRIV_REQUIRES spi_flash esp_driver_gpio esp_timer
+```
+
+That covers milestones 1–4. When a later paste hits the same error with a
+different header, the error message itself names the component to append —
+ESP-IDF prints "add X to PRIV_REQUIRES" at the bottom of the failure.
+
+`firmware/examples/01_hook.c`:
 
 ```c
+#include <stdio.h>
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
+#include "driver/gpio.h"
+#include "esp_timer.h"
+
 #define PIN_SHK  19
 #define PIN_PD   23
 
@@ -505,7 +549,14 @@ off-hook, ~0V on-hook.)
 
 Add two wires: SLIC pin 4 (RM) → GPIO22, SLIC pin 3 (F/R) → GPIO21.
 
+(full file: `firmware/examples/02_ring.c` — paste it whole, this shows the shape)
+
 ```c
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
+#include "driver/gpio.h"
+
+
 #define PIN_RM 22
 #define PIN_FR 21
 
@@ -553,7 +604,14 @@ For the codec you don't write a driver: clone
 its ES8388 init (I2C config + I2S stream at 8kHz). With the codec streaming,
 dial tone is just math — North American dial tone is 350Hz + 440Hz summed:
 
+(full file: `firmware/examples/03_dialtone.c` — paste it whole, this shows the shape)
+
 ```c
+#include <math.h>
+#include <stdint.h>
+#include <stdbool.h>
+
+
 // fill I2S buffer with dial tone, 8kHz mono, 16-bit
 static float ph1, ph2;
 void fill_dialtone(int16_t *buf, int n) {
@@ -577,7 +635,16 @@ digit N, at 10 pulses/sec. So on SHK you'll see, mid-off-hook, short breaks:
 ~60ms low, ~40ms high. Classify: break of 20–90ms = pulse; quiet gap >300ms =
 digit boundary; 10 pulses = "0".
 
+(full file: `firmware/examples/04_digits.c` — paste it whole, this shows the shape)
+
 ```c
+#include <stdio.h>
+#include "freertos/FreeRTOS.h"
+#include "freertos/queue.h"
+#include "driver/gpio.h"
+#include "esp_timer.h"
+
+
 // inside the debounced hook handler:
 // on->off edge while off-hook: possible pulse start (t0 = now)
 // off->on edge: if 20ms < now-t0 < 90ms -> pulse_count++
@@ -665,6 +732,7 @@ this into one small board. It's future work — ignore it for now.)
 | Boot loops / flash fails | Hold BOOT during flash; check DIP switches off; try lower baud |
 | Nothing works, or readings make no sense with two supplies | AudioKit GND not tied to the 5V supply's ground — §5b |
 | Module seated but a rail reads 0V or −5V | Seated a row off, or doesn't reach that rail. Measure every rail before wiring — §5b |
+| `fatal error: driver/gpio.h: No such file or directory` | MINIMAL_BUILD only compiles declared components — add `esp_driver_gpio esp_timer` to `PRIV_REQUIRES` (§5's firmware intro). The error names the missing component |
 | SHK never changes | Divider mis-wired; multimeter the tap: ~3V off-hook. Or PD pin left high |
 | Rings weakly / not at all | 5V rail sagging — add bulk capacitance; check RM/FR wires; some phones' ringers have a switch (ringer OFF slider!) |
 | Ring never stops on pickup | Your ring loop isn't checking the hook — see Milestone 2's `goto answered` |
