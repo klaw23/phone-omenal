@@ -27,9 +27,10 @@ five evenings, comfortably spread out.
 | **A telephone** | $5–15 | Thrift store / eBay | Any corded analog phone. Get two eventually: a touch-tone one for easy debugging, a rotary one for joy. Avoid cordless phones and anything with a wall-wart. |
 | **RJ11 screw-terminal breakout** (or sacrifice a phone cord) | $5 | Amazon "RJ11 breakout" | Gives you screw terminals for the phone line so nothing needs soldering. |
 | **Solderless breadboard, 830 points** | $6 | anywhere | The prototyping surface. |
+| **Breadboard power supply module** (MB102 or clone) | $4 | Amazon "MB102 breadboard power supply" | **Needed** — the AudioKit's headers are 3V3 only, and the SLIC wants 5V. Straddles the board and feeds the rails; runs off USB. Its ~700mA ceiling is fine until ringing (§6). |
 | **Jumper wire kit** (M-M and M-F) | $6 | anywhere | M-F ones connect breadboard to the AudioKit's pin headers. |
 | **3.5mm aux cable** (to cut in half) | $3 | anywhere | Carries audio between the AudioKit's jacks and the SLIC. |
-| Resistor/capacitor kit **or** just: 2× 10k, 1× 15k resistors, 2× 4.7µF and 2× 100nF capacitors | $8 kit | Amazon "resistor capacitor assortment" | A kit is worth it; you'll use it forever. Capacitors: ceramic or film, ≥16V rating. |
+| Resistor/capacitor kit **or** just: 2× 10k, 1× 15k resistors (10k + 4.7k in series substitutes for the 15k), 2× 4.7µF and 2× 100nF capacitors | $8 kit | Amazon "resistor capacitor assortment" | A kit is worth it; you'll use it forever. Capacitors: ceramic or film, ≥16V rating. |
 
 ### Tools (~$45, one-time)
 
@@ -323,27 +324,162 @@ IDF's build/flash/monitor loop is your inner dev loop from here on — treat
 
 **Goal:** serial log prints `OFF HOOK` / `ON HOOK` as you lift the handset.
 
-Wiring (USB unplugged):
+### 5a. Breadboard basics
 
-```
-AudioKit 5V  ──► breadboard red rail ──► SLIC pin 10 (+VDC)
-AudioKit GND ──► breadboard blue rail ──► SLIC pin 9 (GND)
-SLIC pin 5 (SHK) ──► 10k resistor ──►(tap)──► AudioKit GPIO19
-                                  (tap)──► 15k resistor ──► GND
-SLIC pin 11 (PD) ──► AudioKit GPIO23
-SLIC pin 1 & 2 ──► phone line (RJ11 breakout center pair, usually red+green)
-```
+Skip if you've used one. If you haven't, these three rules cover everything in
+this guide.
 
-The 10k/15k pair is the voltage divider from the crash course — SHK swings 5V
-because we're feeding the SLIC 5V (rings the bell hardest). Drive PD low in
-firmware (powered up).
+**The long rails** down each edge run the length of the board. Marked `+` (red)
+and `−` (blue). Every hole in one rail is the same electrical point, so it
+doesn't matter which you use. Two things to check on an unfamiliar board: the
+left and right rails are **not** joined to each other unless you jumper them,
+and some boards **split each rail in the middle** — look for a gap in the
+printed line. A continuity check between the two ends of a rail settles both in
+seconds.
 
-> **AudioKit pin caveat:** this board shares pins liberally between the headers,
-> SD slot, and onboard keys, and revisions differ. This guide uses GPIO 19, 21,
-> 22, 23 (and 5, 13, 14, 18 later) — leave the SD slot empty and all DIP
-> switches OFF. If a pin reads stuck high/low, check your revision's schematic
-> (one page, findable by "ESP32 Audio Kit V2.2 schematic") and swap to a free pin;
-> every pin number in the example code is a `#define` at the top.
+**The short rows** in the middle connect **5 holes horizontally**, and stop dead
+at the centre trench. Row 12 on the left of the trench and row 12 on the right
+are unrelated.
+
+**A row is a node.** This is the idea the wiring diagrams assume. You join
+components by putting their legs in the same row — there's no such thing as
+attaching a wire to the middle of a resistor. When a diagram says "tap", that
+means *a row you pick*, not a part you own.
+
+**Jumper wires** are just wires with connectors, and every `→` below means "run
+one between these points". M-M (pin/pin) goes hole-to-hole; M-F (pin/socket)
+connects a breadboard hole to a male pin on a board. Check which your AudioKit
+needs — revisions ship with pins or sockets.
+
+Use red wire for anything reaching the red rail and black for the blue rail.
+Not electrically required, but it turns a fifteen-connection debugging session
+from ten minutes into ten seconds.
+
+### 5b. Powering the SLIC — the AudioKit has no 5V pin
+
+**The ESP32-A1S Audio Kit does not break out 5V on its pin headers.** Both power
+pins are 3V3, and there are two of each because boards duplicate power pins for
+convenience — all GND pins are the same net, as are all 3V3 pins. The SLIC needs
+5V on +VDC, so it needs its own supply.
+
+Don't substitute 3V3. Hook detection gets flaky and the bell won't ring properly
+at Milestone 2.
+
+The easy answer is a **breadboard power module** (the MB102 and its clones,
+a few dollars) that straddles the board and feeds the rails directly:
+
+- **Input:** USB *or* the DC barrel jack, not both. **Use USB** — it's already
+  5V, and Milestone 1 draws almost nothing. The barrel jack wants 7–9V because
+  its linear regulator can only step *down* and needs headroom; it exists for
+  when you need more current than a USB port gives.
+- **Jumpers:** one per rail, selecting `3.3V` / `OFF` / `5V` for *that rail*.
+  They are not input selectors, despite sitting next to the input connectors.
+  Set the rail you're building against to **5V**.
+- **Pins:** typically two pairs at each end, doubled per rail row for
+  mechanical stability, energising both sides' rails. Seat all of them, evenly
+  and fully — a partial seat gives an intermittent connection that works until
+  you nudge the board.
+
+> **Check polarity before anything else is connected.** These modules can seat
+> one row off, putting `+` on the blue rail. Power on, multimeter on DC volts,
+> black on blue rail and red on red rail: **~5.0V** is right, **−5.0V** means
+> reversed and would destroy the SLIC, **3.3V** means the jumper is wrong.
+
+**The one rule that makes two supplies safe:** the AudioKit's GND and the 5V
+supply's ground must be connected. Two sources with separate grounds means the
+SLIC's signals have no shared reference and every reading is meaningless. Step 2
+below does this.
+
+### 5c. Wiring
+
+Wire it all with the module's power switch **off**.
+
+1. **AudioKit `GND` → blue rail.** Either GND pin, any hole. This is the common
+   ground — it ties the AudioKit to the module's `−`, already on that rail.
+2. **SLIC pin 10 (+VDC) → red rail**
+3. **SLIC pin 9 (GND) → blue rail**
+4. **SLIC pin 5 (SHK) → row 10**
+5. **10k: one leg row 10, other leg row 15**
+6. **15k: one leg row 15, other leg → blue rail**
+7. **Row 15 → AudioKit `GPIO19`**
+8. **SLIC pin 11 (PD) → AudioKit `GPIO23`**
+9. **SLIC pins 1 & 2 → RJ11 breakout centre pair**
+
+Steps 5–7 are the voltage divider from the crash course. SHK swings to 5V
+because we feed the SLIC 5V; the divider scales that to 5V × 15/(10+15) = **3V**,
+safe for the ESP32's 3.3V input. **Row 15 is the tap** — three legs share it:
+the 10k, the 15k, and the jumper to the ESP32. That sharing *is* the connection.
+Row numbers are arbitrary.
+
+**No 15k?** Series resistances add, so 10k + 4.7k = 14.7k works — the tap lands
+at 2.98V instead of 3V, well within the tolerance of the resistors themselves.
+Wire it as 10k (row 10 → row 15), 4.7k (row 15 → row 20), 10k (row 20 → blue
+rail). **Row 20 must contain only those two resistor legs** — that private
+junction is what "in series" means physically. Anything else in it shorts out
+part of the divider.
+
+Drive PD low in firmware (powered up).
+
+**On step 9:** RJ11 is the telephone connector; a breakout is a socket with
+screw terminals so you needn't solder. A phone line uses only **two** wires, by
+convention the middle two, coloured **red and green** — outer positions are a
+second line, unused. Both are needed because a phone line is a **loop**:
+current flows out one wire, through the handset, back the other. The two are
+called **tip** and **ring**, after the parts of an operator's plug. Polarity
+doesn't matter for a standard analog phone. Note there's no connection to your
+breadboard ground here — the line floats, which is normal.
+
+> Once powered these two wires sit at ~48V DC, rising to 60–90V AC while
+> ringing. Not lethal, but a ring burst is a memorable belt. Rewire with the
+> supply off, and don't hold the terminals during Milestone 2.
+
+### 5d. Verify before you trust the firmware
+
+Multimeter on **continuity** — the `•)))` sound-wave symbol, usually sharing a
+dial position with the diode symbol `▶|`; press SELECT to toggle. Black probe in
+`COM`, red in `VΩmA` (not the 10A jack). **Touch the probes together first: it
+must beep.** Otherwise every test below lies to you.
+
+Power **off**:
+
+- **A. Red rail ↔ blue rail — must NOT beep.** A beep is a short across your
+  supply. Find it before switching on.
+- **B. AudioKit GND ↔ blue rail — should beep.** Confirms step 1.
+
+Power **on**, DC volts, black probe on the blue rail throughout:
+
+- **C. Red rail → ~5.0V** (see the polarity warning in 5b)
+- **D. Row 15 → ~0V on-hook, ~3V off-hook**
+
+**Check D is the whole milestone.** If that number moves correctly, the hardware
+is right and anything remaining is firmware.
+
+### 5e. No phone yet? Fake one
+
+Off-hook is just the loop closing, so you can test without a handset. Don't use
+a bare wire — a real phone presents **200–600Ω**, and a dead short is a
+needless risk. Put a resistor in that range across SLIC pins 1 and 2 (or the
+breakout's red/green terminals): inserted is off-hook, pulled out is on-hook.
+
+Value matters. At ~48V, a 10k resistor passes about 5mA — likely under the
+SLIC's detection threshold, so it reads as still on-hook. A few hundred ohms is
+comfortably phone-like. If `SHK` won't move, suspect the resistor before your
+wiring, and confirm with check D.
+
+This proves hook detection only. Ringing and audio need a real phone.
+
+> **AudioKit pin caveat — read before wiring.** This board shares pins liberally
+> between the headers, SD slot, and onboard keys, and revisions differ. On
+> V2.2, **GPIO 5, 13, 18, 19 and 23 are wired to the six onboard KEY buttons**
+> (19 is KEY3, 23 is KEY4), GPIO21 is amplifier control and GPIO22 drives an
+> LED — which is every pin this guide reaches for. The onboard circuitry can
+> fight your divider. The signature is check D reading a clean swing while the
+> firmware never sees a change. If that happens, pull your revision's schematic
+> (one page, findable by "ESP32 Audio Kit V2.2 schematic"), pick a header pin
+> with nothing else attached, and change the `#define` — every pin number in the
+> example code is one. Also note silkscreen shortens `GPIO19` to `IO19`; if
+> yours prints something like `IO19 / KEY3`, the board is telling you the pin is
+> already taken. Leave the SD slot empty and all DIP switches OFF regardless.
 
 Firmware — `firmware/examples/01_hook.c` (paste into your hello-world `main`):
 
@@ -541,6 +677,9 @@ this into one small board. It's future work — ignore it for now.)
 | "No framework selected to load examples" | Reload the window, then `ESP-IDF: Select Current ESP-IDF Version`. The setting is per-workspace (§4d) |
 | ESP-IDF setup fails on Python | `python3` is probably a pyenv/asdf shim; point the extension at the real binary, Python 3.9–3.12 (§4c) |
 | Boot loops / flash fails | Hold BOOT during flash; check DIP switches off; try lower baud |
+| Nothing works, or readings make no sense with two supplies | AudioKit GND not tied to the 5V supply's ground — §5b |
+| Module seated but a rail reads 0V or −5V | Seated a row off, or doesn't reach that rail. Measure every rail before wiring — §5b |
+| Fake-phone resistor doesn't register as off-hook | Value too high; 10k passes ~5mA, under the detection threshold. Use a few hundred ohms — §5e |
 | SHK never changes | Divider mis-wired; multimeter the tap: ~3V off-hook. Or PD pin left high |
 | Rings weakly / not at all | 5V rail sagging — add bulk capacitance; check RM/FR wires; some phones' ringers have a switch (ringer OFF slider!) |
 | Ring never stops on pickup | Your ring loop isn't checking the hook — see Milestone 2's `goto answered` |
