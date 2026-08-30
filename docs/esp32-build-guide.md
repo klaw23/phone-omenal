@@ -454,20 +454,6 @@ Power **on**, DC volts, black probe on the blue rail throughout:
 **Check D is the whole milestone.** If that number moves correctly, the hardware
 is right and anything remaining is firmware.
 
-### 5e. No phone yet? Fake one
-
-Off-hook is just the loop closing, so you can test without a handset. Don't use
-a bare wire — a real phone presents **200–600Ω**, and a dead short is a
-needless risk. Put a resistor in that range across SLIC pins 1 and 2 (or the
-breakout's red/green terminals): inserted is off-hook, pulled out is on-hook.
-
-Value matters. At ~48V, a 10k resistor passes about 5mA — likely under the
-SLIC's detection threshold, so it reads as still on-hook. A few hundred ohms is
-comfortably phone-like. If `SHK` won't move, suspect the resistor before your
-wiring, and confirm with check D.
-
-This proves hook detection only. Ringing and audio need a real phone.
-
 > **AudioKit pin caveat — read before wiring.** This board shares pins liberally
 > between the headers, SD slot, and onboard keys, and revisions differ. On
 > V2.2, **GPIO 5, 13, 18, 19 and 23 are wired to the six onboard KEY buttons**
@@ -679,7 +665,6 @@ this into one small board. It's future work — ignore it for now.)
 | Boot loops / flash fails | Hold BOOT during flash; check DIP switches off; try lower baud |
 | Nothing works, or readings make no sense with two supplies | AudioKit GND not tied to the 5V supply's ground — §5b |
 | Module seated but a rail reads 0V or −5V | Seated a row off, or doesn't reach that rail. Measure every rail before wiring — §5b |
-| Fake-phone resistor doesn't register as off-hook | Value too high; 10k passes ~5mA, under the detection threshold. Use a few hundred ohms — §5e |
 | SHK never changes | Divider mis-wired; multimeter the tap: ~3V off-hook. Or PD pin left high |
 | Rings weakly / not at all | 5V rail sagging — add bulk capacitance; check RM/FR wires; some phones' ringers have a switch (ringer OFF slider!) |
 | Ring never stops on pickup | Your ring loop isn't checking the hook — see Milestone 2's `goto answered` |
